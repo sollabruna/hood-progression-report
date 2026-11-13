@@ -5,6 +5,11 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.3 — 2026-11-13
+
+- Change maps: the optic-disc cut-out extends to the nasal edge of the scan,
+  as in the HEYEX maps.
+
 ## 1.0.2 — 2026-11-13
 
 - Change maps: the optic disc is left grey by default again, now as a clean

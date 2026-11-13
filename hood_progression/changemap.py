@@ -128,7 +128,17 @@ def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarr
     ImageDraw.Draw(im).polygon(poly, fill=255)
     hi = np.asarray(im) > 0
     rows = np.clip(np.round(np.arange(nb) * 10.5 + 5).astype(int), 0, hi.shape[0] - 1)
-    return hi[rows]
+    mask = hi[rows]
+    # The disc sits at the nasal end of the scan and runs off its edge, as in the HEYEX maps:
+    # extend the cut-out to the nearer scan edge when it comes within ~1 mm of it.
+    reach = 80
+    for r in np.flatnonzero(mask.any(axis=1)):
+        cols = np.flatnonzero(mask[r])
+        if cols.max() >= na - reach:
+            mask[r, cols.max():] = True
+        if cols.min() <= reach:
+            mask[r, : cols.min()] = True
+    return mask
 
 
 def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str,
