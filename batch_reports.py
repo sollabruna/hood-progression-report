@@ -28,7 +28,7 @@ def main(argv=None) -> int:
     ap.add_argument("--formats", nargs="+", choices=["png", "pdf"], default=["png", "pdf"])
     ap.add_argument("--require-xml", action="store_true", help="skip visits lacking a circle or posterior-pole XML")
     ap.add_argument("--dry-run", action="store_true", help="only list what would be generated")
-    ap.add_argument("--smooth-mm", type=float, default=0.15)
+    ap.add_argument("--smooth-mm", type=float, default=0.10)
     ap.add_argument("--scale", type=float, default=2.0)
     a = ap.parse_args(argv)
 

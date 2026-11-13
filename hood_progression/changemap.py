@@ -75,33 +75,64 @@ def inpaint_smooth(grid: np.ndarray, sigma_cols: float = 12.0) -> np.ndarray:
     return out
 
 
-def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarray:
-    """Mask of the optic-disc gap: the large unsegmented blob(s) in either volume.
+def _edge_margin_runs(nan: np.ndarray, max_run: int = 60) -> np.ndarray:
+    """NaN runs of up to ``max_run`` A-scans that touch a B-scan end (missing segmentation at the margins)."""
+    m = np.zeros_like(nan)
+    n = nan.shape[1]
+    for r in range(nan.shape[0]):
+        ok = np.flatnonzero(~nan[r])
+        if ok.size == 0:
+            continue
+        if 0 < ok[0] <= max_run:
+            m[r, : ok[0]] = True
+        if 0 < n - 1 - ok[-1] <= max_run:
+            m[r, ok[-1] + 1 :] = True
+    return m
 
-    The disc is the only *large* unsegmented region; small holes and the thin
-    unsegmented margins at the B-scan ends are inpainted instead.
+
+def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarray:
+    """Clean mask of the optic disc: convex hull of the largest unsegmented blob.
+
+    Thin unsegmented margins at the B-scan ends are excluded first; the disc is
+    the largest remaining region without segmentation.  Its raw outline in the
+    export is ragged, so the convex hull is taken in physical (mm-equal)
+    coordinates to give a smooth disc-shaped cut-out.
     """
+    from PIL import Image, ImageDraw
+    from scipy.spatial import ConvexHull
+
     nan = np.zeros(grids[0].shape, bool)
     for g in grids:
         nan |= np.isnan(g)
-    closed = ndimage.binary_closing(nan, structure=np.ones((3, 25)), border_value=0)
-    lab, n = ndimage.label(closed)
+    nb, na = nan.shape
+    cand = nan & ~_edge_margin_runs(nan)
+    cand = ndimage.binary_closing(cand, structure=np.ones((3, 15)), border_value=0)
+    lab, n = ndimage.label(cand)
     mask = np.zeros_like(nan)
-    if n:
-        sizes = ndimage.sum(closed, lab, range(1, n + 1))
-        keep = [i + 1 for i, sz in enumerate(sizes) if sz >= min_area_frac * nan.size]
-        # ignore thin strips hugging the B-scan ends (missing segmentation at the margins)
-        for k in list(keep):
-            ys, xs = np.nonzero(lab == k)
-            if xs.max() - xs.min() < 20 and (xs.min() <= 2 or xs.max() >= nan.shape[1] - 3):
-                keep.remove(k)
-        mask = np.isin(lab, keep)
-        mask = ndimage.binary_dilation(mask, structure=np.ones((3, 9)))
-    return mask
+    if not n:
+        return mask
+    sizes = ndimage.sum(cand, lab, range(1, n + 1))
+    k = int(np.argmax(sizes)) + 1
+    if sizes[k - 1] < min_area_frac * nan.size:
+        return mask
+    ys, xs = np.nonzero(lab == k)
+    if xs.max() - xs.min() < 25 or ys.max() - ys.min() < 2:
+        return mask
+    pts = np.column_stack([xs, ys * 10.5])  # mm-equal units (B-scan step ~ 10.5 A-scans)
+    try:
+        hull = ConvexHull(pts)
+        poly = [(float(pts[i, 0]), float(pts[i, 1])) for i in hull.vertices]
+    except Exception:  # noqa: BLE001  (degenerate blob)
+        return lab == k
+    im = Image.new("L", (na, int(round(nb * 10.5))), 0)
+    ImageDraw.Draw(im).polygon(poly, fill=255)
+    hi = np.asarray(im) > 0
+    rows = np.clip(np.round(np.arange(nb) * 10.5 + 5).astype(int), 0, hi.shape[0] - 1)
+    return hi[rows]
 
 
 def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str,
-                          fill_missing: bool = True, mask_disc: bool = False) -> np.ndarray:
+                          fill_missing: bool = True, mask_disc: bool = True) -> np.ndarray:
     """Follow-up minus baseline thickness (µm), shape (n_bscans, n_ascans).
 
     Missing values (unsegmented A-scans, missing B-scans) are inpainted from the
@@ -112,7 +143,8 @@ def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str
     b, f = getattr(baseline, key), getattr(followup, key)
     if b.shape != f.shape:
         raise ValueError(f"Volume shapes differ: baseline {b.shape} vs follow-up {f.shape}")
-    disc = disc_mask([b, f]) if mask_disc else np.zeros(b.shape, bool)
+    # the disc is defined on the RNFL data (where it is cleanest) so both maps share one outline
+    disc = disc_mask([baseline.rnfl_um, followup.rnfl_um]) if mask_disc else np.zeros(b.shape, bool)
     if fill_missing:
         b, f = inpaint_smooth(b), inpaint_smooth(f)
     change = f - b
@@ -130,9 +162,9 @@ def change_map_from_volumes(
     layer: str,
     size: int = 768,
     limit: Optional[float] = None,
-    smooth_sigma_mm: float = 0.15,
+    smooth_sigma_mm: float = 0.10,
     fill_missing: bool = True,
-    mask_disc: bool = False,
+    mask_disc: bool = True,
     draw_etdrs: bool = False,
     rotate_to_fodi: bool = True,
     rotation_sign: float = 1.0,

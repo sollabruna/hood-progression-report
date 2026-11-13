@@ -5,6 +5,13 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.2 — 2026-11-13
+
+- Change maps: the optic disc is left grey by default again, now as a clean
+  cut-out (convex hull of the unsegmented disc region in the RNFL data, shared
+  by the RNFL and GCL maps) while all other missing data is filled smoothly.
+- Default smoothing changed from 0.15 mm to 0.10 mm.
+
 ## 1.0.1 — 2026-11-13
 
 - Change maps: missing data (unsegmented A-scans, the optic-disc region) is

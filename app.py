@@ -54,9 +54,9 @@ def _options_panel(key: str) -> ReportOptions:
         ftd_auto = st.checkbox("FoDi angle from posterior-pole XML (−TiltAngle for OD, +TiltAngle for OS)", value=True, key=f"{key}_ftd")
         ftd_manual = st.number_input("Manual FoDi angle (°)", value=-7.7, step=0.1, disabled=ftd_auto, key=f"{key}_ftdv")
         st.markdown("**Thickness change maps**")
-        smooth = st.slider("Smoothing (mm)", 0.0, 0.5, 0.15, 0.05, key=f"{key}_smooth")
+        smooth = st.slider("Smoothing (mm)", 0.0, 0.5, 0.10, 0.05, key=f"{key}_smooth")
         fill = st.checkbox("Fill missing data (unsegmented A-scans / missing B-scans)", value=True, key=f"{key}_fill")
-        mdisc = st.checkbox("Leave the optic disc grey (unfilled)", value=False, key=f"{key}_disc")
+        mdisc = st.checkbox("Leave the optic disc grey", value=True, key=f"{key}_disc")
         lim_rnfl = st.number_input("RNFL limit (± µm)", value=float(changemap.DEFAULT_LIMITS["rnfl"]), step=5.0, key=f"{key}_lr")
         lim_gcl = st.number_input("GCL limit (± µm)", value=float(changemap.DEFAULT_LIMITS["gcl"]), step=5.0, key=f"{key}_lg")
         palette = st.selectbox("Colour scale", ["heidelberg", "diverging"], index=0, key=f"{key}_pal",
