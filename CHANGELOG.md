@@ -5,6 +5,15 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.1 — 2026-11-13
+
+- Change maps: missing data (unsegmented A-scans, the optic-disc region) is
+  now filled with a smooth estimate from the surrounding valid data instead of
+  being left grey or filled with nearest values, so there are no gaps or
+  streaks; the deviation maps above cover these areas too. *Leave the optic
+  disc grey* is now an opt-in option.
+- Change maps: removed a thin dark line along the rotated edge.
+
 ## 1.0.0 — 2026-11-13
 
 First release replacing the Photoshop action/template.

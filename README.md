@@ -166,9 +166,10 @@ is written next to the reports.
   the 5th-percentile short-term variability limit (`assets/short_term_var_crnfl.csv`).
 * **Change maps**: follow-up − baseline on the 61 × 768 grid. Missing data
   (unsegmented A-scans at the B-scan ends, missing B-scans, small holes) is
-  inpainted from the nearest valid point before subtracting, so the map has
-  no gaps; the optic disc, the one large unsegmented region, is kept grey as
-  in HEYEX (*Keep the optic disc grey*). The map is then smoothed with a
+  filled with a smooth estimate from the surrounding valid data before
+  subtracting, so the map has no gaps (HEYEX's deviation maps cover those
+  areas too). Tick *Leave the optic disc grey* to keep the disc unfilled, as
+  in HEYEX's thickness maps. The map is then smoothed with a
   Gaussian of 0.15 mm by default (adjustable; 0 = off) to remove the
   B-scan striping. Rotated about
   its centre by the fovea-to-disc tilt angle (`TiltAngle` in the volume XML)

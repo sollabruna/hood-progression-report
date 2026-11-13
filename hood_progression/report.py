@@ -112,7 +112,7 @@ class ReportOptions:
     change_limits: dict = field(default_factory=lambda: dict(changemap.DEFAULT_LIMITS))
     change_smooth_mm: float = 0.15  # Gaussian smoothing of the change maps, in mm (0 = off)
     fill_missing: bool = True  # inpaint unsegmented A-scans / missing B-scans
-    mask_disc: bool = True  # keep the optic-disc gap grey
+    mask_disc: bool = False  # leave the optic-disc gap grey instead of filling it
     draw_etdrs: bool = False
     show_change_colorbars: bool = True
     change_palette: str = changemap.DEFAULT_PALETTE  # "heidelberg" (green loss / black / red gain, as HEYEX) or "diverging"

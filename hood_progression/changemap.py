@@ -43,18 +43,36 @@ def _colormap(values: np.ndarray, limit: float, palette: str = DEFAULT_PALETTE, 
     return rgb.astype(np.uint8)
 
 
-def inpaint_nearest(grid: np.ndarray) -> np.ndarray:
-    """Fill every NaN with the value of the nearest valid grid point (in B-scan/A-scan units,
-    scaled so that one B-scan step counts as ~12 A-scans, i.e. equal distance in mm)."""
+def inpaint_smooth(grid: np.ndarray, sigma_cols: float = 12.0) -> np.ndarray:
+    """Fill NaNs with a smooth estimate from the surrounding valid data.
+
+    Normalised Gaussian convolution of the valid values, with the kernel widened
+    until every gap is covered (B-scan spacing ~0.125 mm vs A-scan ~0.012 mm, so
+    the kernel is anisotropic).  Valid points keep their original values.
+    """
     g = grid.copy()
     nan = np.isnan(g)
-    if not nan.any():
+    if not nan.any() or nan.all():
         return g
-    if nan.all():
-        return g
-    # anisotropic sampling: 61 rows over 7.5 mm vs 768 cols over 9.0 mm
-    idx = ndimage.distance_transform_edt(nan, sampling=(10.5, 1.0), return_distances=False, return_indices=True)
-    return g[tuple(idx)]
+    valid = (~nan).astype(float)
+    vals = np.where(nan, 0.0, g)
+    out = g.copy()
+    todo = nan.copy()
+    sig = sigma_cols
+    for _ in range(8):
+        num = ndimage.gaussian_filter(vals, sigma=(sig / 10.5, sig), mode="nearest")
+        den = ndimage.gaussian_filter(valid, sigma=(sig / 10.5, sig), mode="nearest")
+        ok = todo & (den > 0.02)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[ok] = (num / den)[ok]
+        todo &= ~ok
+        if not todo.any():
+            break
+        sig *= 2
+    if todo.any():  # anything still open: nearest valid value
+        idx = ndimage.distance_transform_edt(todo, sampling=(10.5, 1.0), return_distances=False, return_indices=True)
+        out[todo] = np.where(np.isnan(out[tuple(idx)]), 0.0, out[tuple(idx)])[todo]
+    return out
 
 
 def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarray:
@@ -83,7 +101,7 @@ def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarr
 
 
 def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str,
-                          fill_missing: bool = True, mask_disc: bool = True) -> np.ndarray:
+                          fill_missing: bool = True, mask_disc: bool = False) -> np.ndarray:
     """Follow-up minus baseline thickness (µm), shape (n_bscans, n_ascans).
 
     Missing values (unsegmented A-scans, missing B-scans) are inpainted from the
@@ -96,7 +114,7 @@ def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str
         raise ValueError(f"Volume shapes differ: baseline {b.shape} vs follow-up {f.shape}")
     disc = disc_mask([b, f]) if mask_disc else np.zeros(b.shape, bool)
     if fill_missing:
-        b, f = inpaint_nearest(b), inpaint_nearest(f)
+        b, f = inpaint_smooth(b), inpaint_smooth(f)
     change = f - b
     change[disc] = np.nan
     return change
@@ -114,7 +132,7 @@ def change_map_from_volumes(
     limit: Optional[float] = None,
     smooth_sigma_mm: float = 0.15,
     fill_missing: bool = True,
-    mask_disc: bool = True,
+    mask_disc: bool = False,
     draw_etdrs: bool = False,
     rotate_to_fodi: bool = True,
     rotation_sign: float = 1.0,
@@ -188,7 +206,10 @@ def change_map_from_volumes(
 
     # --- rotate about the rectangle centre by the FoDi tilt angle ----------
     if tilt:
-        rect = rect.rotate(rotation_sign * tilt, resample=Image.BILINEAR, expand=True)
+        rgb_im = Image.fromarray(rgb).rotate(rotation_sign * tilt, resample=Image.BILINEAR, expand=True, fillcolor=BACKGROUND)
+        a_im = Image.fromarray(alpha).rotate(rotation_sign * tilt, resample=Image.BILINEAR, expand=True, fillcolor=0)
+        rect = rgb_im.convert("RGBA")
+        rect.putalpha(a_im.point(lambda v: 255 if v >= 128 else 0))
 
     # --- place in the SLO frame ---------------------------------------------
     canvas = Image.new("RGB", (canvas_w, canvas_h), BACKGROUND)
