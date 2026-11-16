@@ -130,17 +130,32 @@ def read_circle_scan(xml_path: str | Path, circle: str = "small") -> CircleScan:
     """
     root = ET.parse(str(xml_path)).getroot()
     info = read_patient_info(xml_path)
-    circles = []
+    circles, by_length = [], []
     for img in root.iter("Image"):
-        ctx = img.find("OphthalmicAcquisitionContext")
-        if ctx is None or ctx.find("Center") is None:
+        if _text(img.find("ImageType/Type")) not in ("OCT", ""):
             continue
-        sx = float(_text(ctx.find("ScaleX")))
-        w = int(_text(ctx.find("Width")) or 768)
-        circumference_mm = sx * w
-        circles.append((circumference_mm / np.pi, img))
+        ctx = img.find("OphthalmicAcquisitionContext")
+        if ctx is None:
+            continue
+        try:
+            sx = float(_text(ctx.find("ScaleX")))
+            w = int(_text(ctx.find("Width")) or 768)
+        except ValueError:
+            continue
+        length_mm = sx * w
+        if ctx.find("Center") is not None:
+            circles.append((length_mm / np.pi, img))
+        # Fallback: a circle B-scan is the only one longer than a 30° line
+        # (3.5 mm circle = 11.0 mm circumference; radial/volume lines are ~9 mm).
+        elif length_mm >= 10.0 and img.find("Segmentation") is not None:
+            by_length.append((length_mm / np.pi, img))
     if not circles:
-        raise ValueError(f"No circle scans found in {xml_path}")
+        circles = by_length
+    if not circles:
+        raise ValueError(
+            f"No circle scans found in {Path(xml_path).name}. Expected an ONH-RC export with the 3.5/4.1/4.7 mm "
+            "circle B-scans (they carry a <Center> element or a ScaleX x Width of ~11-15 mm)."
+        )
     circles.sort(key=lambda t: t[0])
     idx = {"small": 0, "s": 0, "medium": 1, "m": 1, "large": 2, "l": 2}[circle.lower()]
     idx = min(idx, len(circles) - 1)
