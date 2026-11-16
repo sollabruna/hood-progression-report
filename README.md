@@ -155,9 +155,8 @@ is written next to the reports.
   TSNIT for both eyes (Heidelberg scans CW for OD, CCW for OS); if an export's
   `Direction` disagrees, the profile is reversed. The FoDi shift of the cpRNFL
   axis uses −TiltAngle for OD and +TiltAngle for OS (adjustable in the GUI).
-  **This was written from the Heidelberg conventions but has only been
-  verified on right-eye data — check the first OS case against its Hood
-  report.** Unsegmented edge A-scans are
+  Verified on OS data (circle scanned CCW from the temporal side; scan rotated
+  the opposite way to OD; disc on the left). Unsegmented edge A-scans are
   filled from their neighbour; the unsegmented optic-disc blob is closed and
   left grey.
 * **cpRNFL plot**: 0° at the temporal start of the circle, x-axis reversed

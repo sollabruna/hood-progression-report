@@ -75,28 +75,59 @@ def inpaint_smooth(grid: np.ndarray, sigma_cols: float = 12.0) -> np.ndarray:
     return out
 
 
-def _edge_margin_runs(nan: np.ndarray, max_run: int = 60) -> np.ndarray:
-    """NaN runs of up to ``max_run`` A-scans that touch a B-scan end (missing segmentation at the margins)."""
-    m = np.zeros_like(nan)
+def _edge_runs(nan: np.ndarray):
+    """Per B-scan length of the NaN run at the left and right end (n if the row is empty)."""
     n = nan.shape[1]
+    L, R = np.zeros(nan.shape[0], int), np.zeros(nan.shape[0], int)
     for r in range(nan.shape[0]):
         ok = np.flatnonzero(~nan[r])
         if ok.size == 0:
-            continue
-        if 0 < ok[0] <= max_run:
-            m[r, : ok[0]] = True
-        if 0 < n - 1 - ok[-1] <= max_run:
-            m[r, ok[-1] + 1 :] = True
-    return m
+            L[r] = R[r] = n
+        else:
+            L[r], R[r] = ok[0], n - 1 - ok[-1]
+    return L, R
 
 
-def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarray:
-    """Clean mask of the optic disc: convex hull of the largest unsegmented blob.
+def _margin_fit(run: np.ndarray, tol: int = 12, max_run: int = 100) -> np.ndarray:
+    """Expected margin width per row: robust straight-line fit of the edge-run lengths.
 
-    Thin unsegmented margins at the B-scan ends are excluded first; the disc is
-    the largest remaining region without segmentation.  Its raw outline in the
-    export is ragged, so the convex hull is taken in physical (mm-equal)
-    coordinates to give a smooth disc-shaped cut-out.
+    The unsegmented margin at a B-scan end widens linearly along the stack when
+    the pattern is rotated; the disc and failed B-scans stick out beyond it.
+    """
+    rows = np.arange(run.size)
+    keep = run < max_run
+    if keep.sum() < 5:
+        return np.full(run.size, tol)
+    for _ in range(3):
+        a, b = np.polyfit(rows[keep], run[keep], 1)
+        fit = a * rows + b
+        keep = (run < max_run) & (np.abs(run - fit) <= 15)
+        if keep.sum() < 5:
+            break
+    return np.clip(fit, 0, None) + tol
+
+
+def _edge_margin_runs(nan: np.ndarray) -> np.ndarray:
+    """Mask of the unsegmented margins at the B-scan ends (fitted width per row)."""
+    n = nan.shape[1]
+    L, R = _edge_runs(nan)
+    mL, mR = _margin_fit(L), _margin_fit(R)
+    cols = np.arange(n)
+    m = (cols[None, :] < mL[:, None]) | (cols[None, :] >= (n - mR)[:, None])
+    return m & nan
+
+
+def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.002, fovea_row: Optional[float] = None,
+              nasal_side: Optional[str] = None) -> np.ndarray:
+    """Clean mask of the optic disc: convex hull of the unsegmented disc blob.
+
+    The unsegmented margins at the B-scan ends are removed first (their width
+    is fitted per scan, since it slopes along the rotated stack).  Among the
+    remaining unsegmented blobs the disc is the one on the nasal side with
+    disc-like proportions (not a wide band of failed B-scans) lying closest to
+    the fovea's height; everything else is left to the inpainting.  The convex
+    hull is taken in physical (mm-equal) coordinates for a smooth outline, and
+    extended to the scan edge when the disc runs off it, as in the HEYEX maps.
     """
     from PIL import Image, ImageDraw
     from scipy.spatial import ConvexHull
@@ -111,26 +142,36 @@ def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarr
     mask = np.zeros_like(nan)
     if not n:
         return mask
-    sizes = ndimage.sum(cand, lab, range(1, n + 1))
-    k = int(np.argmax(sizes)) + 1
-    if sizes[k - 1] < min_area_frac * nan.size:
+    best, best_score = None, None
+    for k in range(1, n + 1):
+        ys, xs = np.nonzero(lab == k)
+        size = ys.size
+        if size < min_area_frac * nan.size:
+            continue
+        h_rows, w_cols = ys.max() - ys.min() + 1, xs.max() - xs.min() + 1
+        if h_rows < 3 or w_cols < 15 or w_cols > 260:  # too thin, or a wide band of failed B-scans
+            continue
+        cx, cy = xs.mean(), ys.mean()
+        if nasal_side == "right" and cx < na / 2 or nasal_side == "left" and cx > na / 2:
+            continue  # the disc is on the nasal side
+        dist = abs(cy - fovea_row) if fovea_row is not None else abs(cy - nb / 2)
+        score = (dist, -size)
+        if best_score is None or score < best_score:
+            best, best_score = k, score
+    if best is None:
         return mask
-    ys, xs = np.nonzero(lab == k)
-    if xs.max() - xs.min() < 25 or ys.max() - ys.min() < 2:
-        return mask
+    ys, xs = np.nonzero(lab == best)
     pts = np.column_stack([xs, ys * 10.5])  # mm-equal units (B-scan step ~ 10.5 A-scans)
     try:
         hull = ConvexHull(pts)
         poly = [(float(pts[i, 0]), float(pts[i, 1])) for i in hull.vertices]
     except Exception:  # noqa: BLE001  (degenerate blob)
-        return lab == k
+        return lab == best
     im = Image.new("L", (na, int(round(nb * 10.5))), 0)
     ImageDraw.Draw(im).polygon(poly, fill=255)
     hi = np.asarray(im) > 0
     rows = np.clip(np.round(np.arange(nb) * 10.5 + 5).astype(int), 0, hi.shape[0] - 1)
     mask = hi[rows]
-    # The disc sits at the nasal end of the scan and runs off its edge, as in the HEYEX maps:
-    # extend the cut-out to the nearer scan edge when it comes within ~1 mm of it.
     reach = 80
     for r in np.flatnonzero(mask.any(axis=1)):
         cols = np.flatnonzero(mask[r])
@@ -139,6 +180,18 @@ def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.004) -> np.ndarr
         if cols.min() <= reach:
             mask[r, : cols.min()] = True
     return mask
+
+
+def _fovea_row(vol: VolumeScan) -> Optional[float]:
+    """Grid row (B-scan index) at the fovea, from HEYEX's ETDRS centre, if available."""
+    if vol.etdrs_center_px is None or not vol.localizer_scale_mm_per_px:
+        return None
+    y_mm = vol.etdrs_center_px[1] * vol.localizer_scale_mm_per_px
+    ys = vol.bscan_y_mm
+    ok = ~np.isnan(ys)
+    if ok.sum() < 2:
+        return None
+    return float(np.interp(y_mm, ys[ok][::-1], np.flatnonzero(ok)[::-1]) if ys[ok][0] > ys[ok][-1] else np.interp(y_mm, ys[ok], np.flatnonzero(ok)))
 
 
 def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str,
@@ -154,7 +207,11 @@ def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str
     if b.shape != f.shape:
         raise ValueError(f"Volume shapes differ: baseline {b.shape} vs follow-up {f.shape}")
     # the disc is defined on the RNFL data (where it is cleanest) so both maps share one outline
-    disc = disc_mask([baseline.rnfl_um, followup.rnfl_um]) if mask_disc else np.zeros(b.shape, bool)
+    nasal = None
+    lat = (followup.info.laterality or "").upper()
+    if lat in ("R", "L"):
+        nasal = ("right" if lat == "R" else "left") if followup.ascans_left_to_right else ("left" if lat == "R" else "right")
+    disc = disc_mask([baseline.rnfl_um, followup.rnfl_um], fovea_row=_fovea_row(followup), nasal_side=nasal) if mask_disc else np.zeros(b.shape, bool)
     if fill_missing:
         b, f = inpaint_smooth(b), inpaint_smooth(f)
     change = f - b
