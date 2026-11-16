@@ -24,9 +24,17 @@ st.sidebar.caption(f"Version {__version__} · updates are applied automatically 
 
 # --------------------------------------------------------------------------- helpers
 def _save_upload(up, folder: Path) -> Path | None:
+    """Save an uploaded file under ``folder`` (created if needed), keeping its name."""
     if up is None:
         return None
+    folder.mkdir(parents=True, exist_ok=True)
     p = folder / up.name
+    if p.exists():  # same file name uploaded twice in one zone: keep both
+        stem, suf = p.stem, p.suffix
+        n = 2
+        while (folder / f"{stem}_{n}{suf}").exists():
+            n += 1
+        p = folder / f"{stem}_{n}{suf}"
     p.write_bytes(up.getbuffer())
     return p
 
@@ -101,10 +109,11 @@ with tab_single:
     if not (pdf_base and pdf_fup):
         st.info("Upload both Hood report PDFs (left sidebar) to begin. The XMLs add the cpRNFL plot and the change maps.")
     else:
+        # each drop zone gets its own folder: circle and posterior-pole exports often share a file name
         tmp = Path(tempfile.mkdtemp(prefix="hood_report_"))
-        p1, p2 = _save_upload(pdf_base, tmp), _save_upload(pdf_fup, tmp)
-        circles = _by_date([_save_upload(u, tmp) for u in (circ_up or [])], "circle")
-        volumes = _by_date([_save_upload(u, tmp) for u in (vol_up or [])], "volume")
+        p1, p2 = _save_upload(pdf_base, tmp / "baseline"), _save_upload(pdf_fup, tmp / "followup")
+        circles = _by_date([_save_upload(u, tmp / "circle") for u in (circ_up or [])], "circle")
+        volumes = _by_date([_save_upload(u, tmp / "volume") for u in (vol_up or [])], "volume")
 
         col_a, col_b = st.columns([1, 1])
         with col_a:

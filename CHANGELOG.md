@@ -5,6 +5,12 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.5 — 2026-11-16
+
+- GUI: a circle XML and a posterior-pole XML with the same file name no longer
+  overwrite each other (caused "No circle scans found in …" when the
+  posterior-pole export was named like the circle export).
+
 ## 1.0.4 — 2026-11-16
 
 - Circle (ONH-RC) exports whose circle B-scans carry no `<Center>` element are
