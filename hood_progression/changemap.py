@@ -182,6 +182,42 @@ def disc_mask(grids: list[np.ndarray], min_area_frac: float = 0.002, fovea_row: 
     return mask
 
 
+def _resample_to(src: VolumeScan, grid: np.ndarray, dst: VolumeScan) -> np.ndarray:
+    """Resample ``grid`` (rows = src B-scans) onto dst's B-scan positions and A-scan count.
+
+    Used when the two visits were acquired with different scan patterns (e.g.
+    61 vs 49 lines) or widths.  Rows are interpolated by fundus Y position
+    (nearest valid neighbours, so missing rows do not poison the result);
+    columns by linear interpolation along the B-scan.
+    """
+    sy, dy = src.bscan_y_mm, dst.bscan_y_mm
+    ok = ~np.isnan(sy)
+    out_rows = np.full((len(dy), grid.shape[1]), np.nan)
+    if ok.sum() >= 2:
+        order = np.argsort(sy[ok])
+        ys_sorted, rows_sorted = sy[ok][order], grid[ok][order]
+        for i, y in enumerate(dy):
+            if np.isnan(y):
+                continue
+            j = np.searchsorted(ys_sorted, y)
+            j0, j1 = max(j - 1, 0), min(j, len(ys_sorted) - 1)
+            if j0 == j1 or ys_sorted[j1] == ys_sorted[j0]:
+                out_rows[i] = rows_sorted[j0]
+                continue
+            t = (y - ys_sorted[j0]) / (ys_sorted[j1] - ys_sorted[j0])
+            a, c = rows_sorted[j0], rows_sorted[j1]
+            mix = (1 - t) * a + t * c
+            out_rows[i] = np.where(np.isnan(mix), np.where(np.isnan(a), c, a), mix)
+    else:
+        out_rows[: min(len(dy), grid.shape[0])] = grid[: min(len(dy), grid.shape[0])]
+    nd = dst.rnfl_um.shape[1]
+    if out_rows.shape[1] != nd:
+        xs = np.linspace(0, 1, out_rows.shape[1])
+        xd = np.linspace(0, 1, nd)
+        out_rows = np.vstack([np.interp(xd, xs, r) for r in out_rows])
+    return out_rows
+
+
 def _fovea_row(vol: VolumeScan) -> Optional[float]:
     """Grid row (B-scan index) at the fovea, from HEYEX's ETDRS centre, if available."""
     if vol.etdrs_center_px is None or not vol.localizer_scale_mm_per_px:
@@ -204,14 +240,16 @@ def thickness_change_grid(baseline: VolumeScan, followup: VolumeScan, layer: str
     """
     key = {"rnfl": "rnfl_um", "gcl": "gcl_um"}[layer]
     b, f = getattr(baseline, key), getattr(followup, key)
-    if b.shape != f.shape:
-        raise ValueError(f"Volume shapes differ: baseline {b.shape} vs follow-up {f.shape}")
+    b_rnfl = baseline.rnfl_um
+    if b.shape != f.shape:  # different scan pattern: bring the baseline onto the follow-up's grid
+        b = _resample_to(baseline, b, followup)
+        b_rnfl = _resample_to(baseline, baseline.rnfl_um, followup)
     # the disc is defined on the RNFL data (where it is cleanest) so both maps share one outline
     nasal = None
     lat = (followup.info.laterality or "").upper()
     if lat in ("R", "L"):
         nasal = ("right" if lat == "R" else "left") if followup.ascans_left_to_right else ("left" if lat == "R" else "right")
-    disc = disc_mask([baseline.rnfl_um, followup.rnfl_um], fovea_row=_fovea_row(followup), nasal_side=nasal) if mask_disc else np.zeros(b.shape, bool)
+    disc = disc_mask([b_rnfl, followup.rnfl_um], fovea_row=_fovea_row(followup), nasal_side=nasal) if mask_disc else np.zeros(b.shape, bool)
     if fill_missing:
         b, f = inpaint_smooth(b), inpaint_smooth(f)
     change = f - b

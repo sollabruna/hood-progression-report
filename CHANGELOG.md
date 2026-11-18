@@ -5,6 +5,14 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.7 — 2026-11-18
+
+- Posterior-pole exports with a B-scan lacking segmentation no longer fail
+  with "Volume shapes differ": the B-scan is kept as a row of missing data
+  and interpolated, and a warning is shown.
+- Visits acquired with different scan patterns (e.g. 61 vs 49 lines) are
+  resampled onto the follow-up's B-scan positions instead of failing.
+
 ## 1.0.6 — 2026-11-16
 
 - Change maps: optic-disc detection no longer mistakes a block of failed

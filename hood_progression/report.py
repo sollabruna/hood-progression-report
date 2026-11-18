@@ -214,6 +214,11 @@ class ProgressionReport:
                     self.warnings.append(f"{name} XMLs are for different eyes.")
                 if a.info.patient_id != b.info.patient_id:
                     self.warnings.append(f"{name} XMLs have different patient IDs.")
+        for name, v in (("baseline", self.vol1), ("follow-up", self.vol2)):
+            if v and v.n_unsegmented_bscans:
+                self.warnings.append(f"{name} posterior-pole XML: {v.n_unsegmented_bscans} B-scan(s) without segmentation (interpolated in the change maps).")
+        if self.vol1 and self.vol2 and self.vol1.shape != self.vol2.shape:
+            self.warnings.append(f"Posterior-pole scan patterns differ ({self.vol1.shape[0]} vs {self.vol2.shape[0]} B-scans); baseline resampled onto the follow-up grid.")
         d1, d2 = hoodpdf.parse_heidelberg_date(h1.exam), hoodpdf.parse_heidelberg_date(h2.exam)
         if d1 and d2 and d2 < d1:
             self.warnings.append("Follow-up Hood report is dated before the baseline report.")

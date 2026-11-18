@@ -198,6 +198,7 @@ class VolumeScan:
     info: PatientInfo
     localizer_scale_mm_per_px: Optional[float] = None
     bscan_dir_mm: tuple[float, float] = (1.0, 0.0)  # mean (End - Start) of the B-scans, SLO mm
+    n_unsegmented_bscans: int = 0
     layers: dict[str, np.ndarray] = field(default_factory=dict)
 
     @property
@@ -256,16 +257,24 @@ def read_volume_scan(xml_path: str | Path) -> VolumeScan:
     rnfl_rows, gcl_rows, ys, dirs = [], [], [], []
     xs = (np.inf, -np.inf)
     sx = 0.0
+    n_missing_seg = 0
     for img in root.iter("Image"):
         if _text(img.find("ImageType/Type")) != "OCT":
             continue
-        segs = _seglines(img)
-        if not {"ILM", "RNFL", "GCL"} <= set(segs):
-            continue
-        um = _axial_um_per_px(img)
-        rnfl_rows.append((segs["RNFL"] - segs["ILM"]) * um)
-        gcl_rows.append((segs["GCL"] - segs["RNFL"]) * um)
         ctx = img.find("OphthalmicAcquisitionContext")
+        if ctx is None or ctx.find("Start/Coord") is None:
+            continue
+        segs = _seglines(img)
+        um = _axial_um_per_px(img)
+        width = int(_text(ctx.find("Width")) or 768)
+        if {"ILM", "RNFL", "GCL"} <= set(segs):
+            rnfl_rows.append((segs["RNFL"] - segs["ILM"]) * um)
+            gcl_rows.append((segs["GCL"] - segs["RNFL"]) * um)
+        else:
+            # B-scan without (complete) segmentation: keep its place as a row of missing data
+            n_missing_seg += 1
+            rnfl_rows.append(np.full(width, np.nan))
+            gcl_rows.append(np.full(width, np.nan))
         start = ctx.find("Start/Coord")
         end = ctx.find("End/Coord")
         try:
@@ -276,8 +285,13 @@ def read_volume_scan(xml_path: str | Path) -> VolumeScan:
         except (AttributeError, ValueError):
             ys.append(np.nan)
         sx = float(_text(ctx.find("ScaleX")) or sx)
-    if not rnfl_rows:
+    if not rnfl_rows or n_missing_seg == len(rnfl_rows):
         raise ValueError(f"No segmented OCT B-scans found in {xml_path}")
+    widths = {r.size for r in rnfl_rows}
+    if len(widths) > 1:  # pad to the widest B-scan (should not happen within one volume)
+        w = max(widths)
+        rnfl_rows = [np.pad(r, (0, w - r.size), constant_values=np.nan) for r in rnfl_rows]
+        gcl_rows = [np.pad(r, (0, w - r.size), constant_values=np.nan) for r in gcl_rows]
 
     tilt = root.find(".//TiltAngle")
     tilt_deg = float(_text(tilt)) if tilt is not None and _text(tilt) else None
@@ -307,6 +321,7 @@ def read_volume_scan(xml_path: str | Path) -> VolumeScan:
         info=info,
         localizer_scale_mm_per_px=loc_scale,
         bscan_dir_mm=tuple(np.mean(dirs, axis=0)) if dirs else (1.0, 0.0),
+        n_unsegmented_bscans=n_missing_seg,
     )
 
 
