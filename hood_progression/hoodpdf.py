@@ -60,6 +60,15 @@ class HoodHeader:
     def exam_date(self) -> Optional[dt.date]:
         return parse_heidelberg_date(self.exam)
 
+    @property
+    def study_id(self) -> str:
+        from .hexml import resolve_study_id
+
+        # "Patient:" is "LastName, FirstName"; the study ID is usually typed as the first name
+        parts = [x.strip() for x in (self.patient or "").split(",")]
+        first, last = (parts[1], parts[0]) if len(parts) > 1 else ("", parts[0] if parts else "")
+        return resolve_study_id(self.patient_id, first, last)
+
     def dob_date(self) -> Optional[dt.date]:
         return parse_heidelberg_date(self.dob)
 

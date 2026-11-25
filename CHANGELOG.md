@@ -5,6 +5,14 @@ Versions follow `MAJOR.MINOR.PATCH`: PATCH = fixes that do not change a
 report's content, MINOR = new features or changes to how reports look,
 MAJOR = incompatible changes to inputs or layout.
 
+## 1.0.8 — 2026-11-25
+
+- Study ID: when HEYEX's Patient ID field is blank ("---" on the Hood report,
+  empty in the XML, as happens at a first visit before the ID is entered), the
+  ID is taken from the name field (the first-name half of "Last, First").
+  Fixes visits of one patient being split into two groups in batch mode and
+  spurious "different patient IDs" warnings.
+
 ## 1.0.7 — 2026-11-18
 
 - Posterior-pole exports with a B-scan lacking segmentation no longer fail

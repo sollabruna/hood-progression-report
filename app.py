@@ -119,7 +119,7 @@ with tab_single:
         with col_a:
             st.subheader("Detected inputs")
             for label, lst in (("Circle XMLs", circles), ("Posterior-pole XMLs", volumes)):
-                desc = ", ".join(f"{hexml.read_patient_info(p).patient_id} {hexml.read_patient_info(p).eye} {hexml.read_patient_info(p).exam_date}" for p in lst)
+                desc = ", ".join(f"{hexml.read_patient_info(p).study_id} {hexml.read_patient_info(p).eye} {hexml.read_patient_info(p).exam_date}" for p in lst)
                 st.write(f"**{label}:** {len(lst)} — {desc}")
             if len(circles) < 2:
                 st.warning("Need two circle XMLs for the cpRNFL difference plot (it will be left blank).")

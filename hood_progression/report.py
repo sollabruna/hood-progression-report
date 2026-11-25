@@ -171,7 +171,7 @@ def default_header(
         p = hoodpdf.parse_heidelberg_date(fallback)
         return p.strftime("%m/%d/%Y") if p else fallback
 
-    pid = (xml_info.patient_id if xml_info else "") or h1.patient_id
+    pid = (xml_info.study_id if xml_info else "") or (xml_info2.study_id if xml_info2 else "") or h1.study_id or h2.study_id
     return HeaderFields(
         patient=pid,
         patient_id=pid,
@@ -206,14 +206,14 @@ class ProgressionReport:
         h1, h2 = self.hood1.header, self.hood2.header
         if h1.eye and h2.eye and h1.eye != h2.eye:
             self.warnings.append(f"Hood reports are for different eyes ({h1.eye} vs {h2.eye}).")
-        if h1.patient_id and h2.patient_id and h1.patient_id != h2.patient_id:
-            self.warnings.append(f"Hood reports have different patient IDs ({h1.patient_id} vs {h2.patient_id}).")
+        if h1.study_id and h2.study_id and h1.study_id.upper() != h2.study_id.upper():
+            self.warnings.append(f"Hood reports have different patient IDs ({h1.study_id} vs {h2.study_id}).")
         for name, a, b in (("circle", self.circle1, self.circle2), ("volume", self.vol1, self.vol2)):
             if a and b:
                 if a.info.laterality != b.info.laterality:
                     self.warnings.append(f"{name} XMLs are for different eyes.")
-                if a.info.patient_id != b.info.patient_id:
-                    self.warnings.append(f"{name} XMLs have different patient IDs.")
+                if a.info.study_id.upper() != b.info.study_id.upper():
+                    self.warnings.append(f"{name} XMLs have different patient IDs ({a.info.study_id} vs {b.info.study_id}).")
         for name, v in (("baseline", self.vol1), ("follow-up", self.vol2)):
             if v and v.n_unsegmented_bscans:
                 self.warnings.append(f"{name} posterior-pole XML: {v.n_unsegmented_bscans} B-scan(s) without segmentation (interpolated in the change maps).")

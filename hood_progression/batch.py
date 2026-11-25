@@ -83,10 +83,10 @@ def index_visits(files: Iterable[Path], log: Optional[Callable[[str], None]] = N
             if f.suffix.lower() == ".pdf":
                 h = hoodpdf.HoodReport(f, dpi=72).header  # low dpi: only the text is needed here
                 d = h.exam_date()
-                if not (h.patient_id and h.eye and d):
+                if not (h.study_id and h.eye and d):
                     log(f"skip {f.name}: not a Hood report (no patient ID / eye / exam date in text)")
                     continue
-                v = visit(_norm_id(h.patient_id), h.eye, d)
+                v = visit(_norm_id(h.study_id), h.eye, d)
                 if v.hood_pdf:
                     log(f"note {f.name}: second Hood PDF for {v.patient_id} {v.eye} {d}; keeping {v.hood_pdf.name}")
                 else:
@@ -97,10 +97,10 @@ def index_visits(files: Iterable[Path], log: Optional[Callable[[str], None]] = N
                     log(f"skip {f.name}: not a HEYEX circle or volume export")
                     continue
                 info = hexml.read_patient_info(f)
-                if not (info.patient_id and info.laterality and info.exam_date):
+                if not (info.study_id and info.laterality and info.exam_date):
                     log(f"skip {f.name}: missing patient ID / eye / date")
                     continue
-                v = visit(_norm_id(info.patient_id), info.eye, info.exam_date)
+                v = visit(_norm_id(info.study_id), info.eye, info.exam_date)
                 attr = "circle_xml" if kind == "circle" else "volume_xml"
                 if getattr(v, attr):
                     log(f"note {f.name}: second {kind} XML for {v.patient_id} {v.eye} {info.exam_date}; keeping {getattr(v, attr).name}")

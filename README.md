@@ -106,7 +106,9 @@ handling / limits / palette, the ETDRS overlay, and the B-scan crop.
 and choose which pairs to make: baseline → latest visit, baseline → every
 later visit, or each visit → the next. Files are grouped by **patient ID +
 eye + exam date** read from each file, so a visit's PDF and XMLs must carry
-the same study ID and date. A table shows what was found; **Generate all
+the same study ID and date (if the Patient ID field is blank, the study ID is
+taken from the name field). When a visit has two Hood PDFs (`_1`, `_2`), the
+first in name order is used. A table shows what was found; **Generate all
 reports** writes PNG/PDF per pair into the output folder and offers a ZIP.
 Visits that lack an XML still get a report with that panel blank (or tick
 *Skip visits that lack …*).

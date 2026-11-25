@@ -46,6 +46,32 @@ def _date_from(el: Optional[ET.Element]) -> Optional[dt.date]:
         return None
 
 
+import re as _re
+
+_ID_TOKEN = _re.compile(r"^[A-Za-z]{2,}[-_ ]?\d{2,}$")  # study IDs such as CUNAD156, COL037, HAD-12
+
+
+def resolve_study_id(patient_id: str, *name_fields: str) -> str:
+    """The study ID: the PatientID field when filled in, else an ID-looking token from the name fields.
+
+    HEYEX's Patient ID is sometimes left blank at the first visit and filled in
+    later, while the study ID is typed into the name; this keeps the visits
+    together.
+    """
+    pid = (patient_id or "").strip()
+    if pid and pid != "---":
+        return pid
+    for field in name_fields:
+        for tok in _re.split(r"[,\s]+", field or ""):
+            if _ID_TOKEN.match(tok):
+                return tok
+    for field in name_fields:
+        for tok in _re.split(r"[,\s]+", field or ""):
+            if tok and tok != "---":
+                return tok
+    return ""
+
+
 @dataclass
 class PatientInfo:
     patient_id: str = ""
@@ -60,6 +86,10 @@ class PatientInfo:
     @property
     def eye(self) -> str:
         return {"R": "OD", "L": "OS"}.get(self.laterality.upper(), self.laterality)
+
+    @property
+    def study_id(self) -> str:
+        return resolve_study_id(self.patient_id, self.first_names, self.last_name)
 
     def fmt_date(self, d: Optional[dt.date]) -> str:
         return d.strftime("%m/%d/%Y") if d else ""
